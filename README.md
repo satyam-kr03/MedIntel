@@ -14,7 +14,7 @@ Our early testing and analysis shows that our LLM outperforms publicly accessibl
 
 ## Multi-Modal RAG Methodology
 
-![RAG](https://github.com/DhruvSinghiitmandi/Health.ai/assets/126661857/55bc923a-d534-4e37-9be7-ce2101d49593)
+![RAG](https://github.com/satyam-kr03/MedIntel/assets/126661857/55bc923a-d534-4e37-9be7-ce2101d49593)
 
 ## Installation 
 (Tested on Ubuntu 22.04)
@@ -30,8 +30,8 @@ ollama pull dhruvsingh959/ddx-llama
 
 Paste the following commands in your terminal:
 ```
-git clone https://github.com/dhruvsinghiitmandi/health.ai.git
-cd health.ai
+git clone https://github.com/satyam-kr03/medintel.git
+cd medintel
 pip install -r requirements.txt
 langchain serve
 ```
