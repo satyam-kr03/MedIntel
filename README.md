@@ -2,9 +2,10 @@
 
 MedIntel is a personal healthcare assistant which is equipped with multimodal RAG (Retrieval Augmented Generation), capable of handling complex medical queries and asking follow-up questions to arrive at a differential diagnosis for the patient along with relevant suggestions. 
 
-The chatbot is powered by LLaVA and [ddx-llama](https://ollama.com/dhruvsingh959/ddx-llama), a version of the open-source LLama 2, which we fine-tuned on our own [dataset](https://huggingface.co/datasets/satyam-03/ddx-conversations-10k) consisting of 10k samples of medical conversations between a doctor and a patient that we generated using the publicly available [DDXPlus](https://github.com/mila-iqia/ddxplus) dataset of synthetic patient symptoms, antecedents and their respective differential diagnoses. 
+The chatbot is powered by LLaVA and [ddx-llama](https://ollama.com/dhruvsingh959/ddx-llama), a version of the open-source LLama 2, which we fine-tuned on our own [dataset](https://huggingface.co/datasets/satyam-03/ddx-conversations-10k) consisting of 10k samples of medical conversations between a doctor and a patient that we generated using the publicly available [DDXPlus](https://github.com/mila-iqia/ddxplus) dataset of synthetic patient symptoms, antecedents and their respective differential diagnoses.
 
-![Screenshot from 2024-04-16 11-50-39](https://github.com/satyam-kr03/MedIntel/assets/126661857/ce01b2d1-a275-4f7a-a308-cb0e92d5a499)
+![image](https://github.com/user-attachments/assets/ed0c2940-2fab-4555-8cbb-29f5aafaa5de)
+
 
 Our user interface integrates **OAuth** and the **Google Fit REST API** to provide real-time data (fetched from phones and smart wearables if available) on the user dashboard. This enables the user to monitor their personal health and fitness metrics and make queries to our chatbot accordingly.
 
@@ -14,7 +15,8 @@ Our early testing and analysis shows that our LLM outperforms publicly accessibl
 
 ## Multi-Modal RAG Methodology
 
-![RAG](https://github.com/satyam-kr03/MedIntel/assets/126661857/55bc923a-d534-4e37-9be7-ce2101d49593)
+![image](https://github.com/user-attachments/assets/f29b3fab-2a72-45e2-8822-092acf1ff346)
+
 
 ## Installation 
 (Tested on Ubuntu 22.04)
