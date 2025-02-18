@@ -87,7 +87,7 @@ retriever = MultiVectorRetriever(
 )
 
 # Initialize the models
-llm = Ollama(model="llama3.2", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "If I tell you that I am not well or have any medical problem, analyse my conditions carefully, and remember any information about my symptoms or medical history. Keep asking follow-up questions about the symptoms and any other information that may help you to narrow down at a differential diagnosis. Do not ask more than 2 questions at a time. If and only if you are confident about it, provide me with a list of possible diagnoses, three or four at maximum, ranked by likelihood, and a brief explanation of your reasoning. Keep asking questions otherwise, not more than 2 at a time.", keep_alive = -1)
+llm = Ollama(model="llama3.2", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "You are a general AI assistant.", keep_alive = -1)
 llava = Ollama(model="llava:7b-v1.6-mistral-q2_K", keep_alive = -1)
 
 # Test the models
@@ -173,10 +173,11 @@ async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
 @app.post("/generate")
 async def generate_output(inp: str):
     
-    s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
+    #s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
+    s = "You are an AI assistant"
 
     # Prompt template
-    template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. {{ if .}}### Instruction: If I tell you that I am not well or have any medical problem, analyse my conditions carefully, and remember any information about my symptoms or medical history. Keep asking follow-up questions about the symptoms and any other information that may help you to narrow down at a differential diagnosis. Do not ask more than 2 questions at a time. If and only if you are confident about it, provide me with a list of possible diagnoses, three or four at maximum, ranked by likelihood, and a brief explanation of your reasoning. Keep asking questions otherwise, not more than 2 at a time. You also have the following context, which can include text and tables to answer my QUESTION {{ .System }}{{ end }} {{ if .Prompt }}{context}
+    template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. {{ if .}}### Instruction: Answer the questions based on whatever information you have.{{ .System }}{{ end }} {{ if .Prompt }}{context}
                     Question: {question}{{ .Prompt }}{{ end }} ### Response:"""
     prompt = ChatPromptTemplate.from_template(template)
 

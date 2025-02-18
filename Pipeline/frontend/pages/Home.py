@@ -137,8 +137,8 @@ st.markdown(
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "upload_status" not in st.session_state:
-    st.session_state.upload_status = None
+if "file_uploaded" not in st.session_state:
+    st.session_state.file_uploaded = False
 
 uploaded_file = st.file_uploader(
     "Upload a pdf or image file",
@@ -146,18 +146,19 @@ uploaded_file = st.file_uploader(
     help="Upload a file to ask related questions."
 )
 
-if uploaded_file is not None:
+if uploaded_file is not None and not st.session_state.file_uploaded:
     with st.spinner("Uploading file..."):
         if uploaded_file.type == "application/pdf":
             response = asyncio.run(upload_file(uploaded_file, "upload_pdf"))
         else:
             response = asyncio.run(upload_file(uploaded_file, "upload_img"))
-        
+
         st.session_state.upload_status = response  # Store upload status
+        st.session_state.file_uploaded = response == "File uploaded successfully"  # Mark as uploaded
         st.write(response)
 
 # Prevent input until file upload is successful
-if st.session_state.upload_status == "File uploaded successfully" or uploaded_file is None:
+if st.session_state.file_uploaded or uploaded_file is None:
     prompt = st.chat_input("What is up?", key="main_chat_input")  # Assign a unique key
 
     if prompt:
@@ -183,6 +184,7 @@ if st.session_state.upload_status == "File uploaded successfully" or uploaded_fi
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 else:
     st.warning("Please wait until the file upload is complete before asking questions.")
+
 
 sidebar = st.sidebar
 sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">', unsafe_allow_html=True)
