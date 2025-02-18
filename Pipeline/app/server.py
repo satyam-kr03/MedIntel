@@ -29,6 +29,10 @@ from langchain.retrievers.multi_vector import MultiVectorRetriever
 
 from unstructured.partition.auto import partition
 
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from pathlib import Path
+from datetime import datetime
+
 # Set environment variables
 os.environ["PATH"] += r";C:\Users\go39res\AppData\Local\miniconda3\envs\stuff\Library\bin"
 
@@ -48,8 +52,6 @@ tunnel_config = {
     "hostname": "cool-starfish-suitable.ngrok-free.app",
     "proto": "http"
 }
-
-
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -106,33 +108,67 @@ async def root():
     return RedirectResponse(url="/docs")
 
 @app.post("/upload_img")
-async def up_img(inp)-> Dict[str,str]:
+async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
     try:
+        # Create uploads directory if it doesn't exist
+        UPLOAD_DIR = Path("./uploads")
+        UPLOAD_DIR.mkdir(exist_ok=True)
+        
+        # Generate unique filename with original extension
+        file_extension = os.path.splitext(file.filename)[1]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_filename = f"{timestamp}_{uuid.uuid4()}{file_extension}"
+        file_path = UPLOAD_DIR / unique_filename
+
+        # Save uploaded file
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # Process the image with LLaVA
         cleaned_img_summary = []
-        filename = inp
-        
-    # Iterate over matched file paths
-        for img in [filename]:
-            RES = llava(prompt="Provide a concise, factual summary of the image, capturing all the key visual elements and details you observe. Avoid speculative or imaginative descriptions not directly supported by the contents of the image. Focus on objectively describing what is present in the image without introducing any external information or ideas. Your summary should be grounded solely in the visual information provided." ,images=[str(image_to_base64(f"./{img}"))])
-            cleaned_img_summary.append(RES)
-        # print(cleaned_img_summary)
-        
+        RES = llava(
+            prompt="Provide a concise, factual summary of the image, capturing all the key visual elements and details you observe. Avoid speculative or imaginative descriptions not directly supported by the contents of the image. Focus on objectively describing what is present in the image without introducing any external information or ideas. Your summary should be grounded solely in the visual information provided.",
+            images=[str(image_to_base64(str(file_path)))]
+        )
+        print(RES)
+        cleaned_img_summary.append(RES)
+
+        # Generate unique IDs and create documents
         img_ids = [str(uuid.uuid4()) for _ in cleaned_img_summary]
         summary_img = [
-            Document(page_content=s, metadata={id_key: img_ids[i]})
+            Document(
+                page_content=s,
+                metadata={
+                    'id_key': img_ids[i],
+                    'filename': unique_filename,
+                    'original_filename': file.filename,
+                    'file_path': str(file_path)
+                }
+            )
             for i, s in enumerate(cleaned_img_summary)
         ]
 
+        # Store in vector database and document store
         retriever.vectorstore.add_documents(summary_img)
-        retriever.docstore.mset(
-            list(zip(img_ids, cleaned_img_summary))
+        retriever.docstore.mset(list(zip(img_ids, cleaned_img_summary)))
+
+        return {
+            "message": "200",
+            "filename": unique_filename,
+            "file_path": str(file_path),
+            "image_id": img_ids[0]
+        }
+
+    except Exception as e:
+        # Delete uploaded file if it exists and processing failed
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing image: {str(e)}"
         )
-        
-        return {"message":"200"}
-    
-    except Exception as e: 
-        print(e)
-        return {"message":"404"}
+
+    if 'file_path' in locals() and os.path.exists(file_path):
+        os.remove(file_path)
 
 @app.post("/generate")
 async def generate_output(inp: str) -> Dict[str, str]:
@@ -154,14 +190,19 @@ async def generate_output(inp: str) -> Dict[str, str]:
     txt = chain.invoke(inp)
     return {"message":txt}
 
-@app.post("/upload")
-async def post_pdf() -> Dict[str,str]:
+@app.post("/upload_pdf")
+async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
     try:
         print("here1")
+        # Save the uploaded file
         filename = "uploaded_file.pdf"
         path = "./"
+        
+        content = await file.read()
+        with open(path + filename, "wb") as f:
+            f.write(content)
 
-        # Extract images, tables, and chunk text
+        # Rest of your original code remains exactly the same
         raw_pdf_elements = partition(
             filename = path + filename,
             extract_images_in_pdf=True,
@@ -268,6 +309,7 @@ async def post_pdf() -> Dict[str,str]:
     except Exception as e:
         print(e)
         return {"message":"404"}
+
 
 # main function to run the server
 if __name__ == "__main__":
