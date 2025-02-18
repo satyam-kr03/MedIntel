@@ -12,7 +12,7 @@ from typing import Dict, Any
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from langchain_community.chat_models import ChatOllama
@@ -171,10 +171,11 @@ async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
         os.remove(file_path)
 
 @app.post("/generate")
-async def generate_output(inp: str) -> Dict[str, str]:
+async def generate_output(inp: str):
+    
     s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
 
-# Prompt template
+    # Prompt template
     template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. {{ if .}}### Instruction: If I tell you that I am not well or have any medical problem, analyse my conditions carefully, and remember any information about my symptoms or medical history. Keep asking follow-up questions about the symptoms and any other information that may help you to narrow down at a differential diagnosis. Do not ask more than 2 questions at a time. If and only if you are confident about it, provide me with a list of possible diagnoses, three or four at maximum, ranked by likelihood, and a brief explanation of your reasoning. Keep asking questions otherwise, not more than 2 at a time. You also have the following context, which can include text and tables to answer my QUESTION {{ .System }}{{ end }} {{ if .Prompt }}{context}
                     Question: {question}{{ .Prompt }}{{ end }} ### Response:"""
     prompt = ChatPromptTemplate.from_template(template)
@@ -187,8 +188,11 @@ async def generate_output(inp: str) -> Dict[str, str]:
         | StrOutputParser()
     )
 
-    txt = chain.invoke(inp)
-    return {"message":txt}
+    async def generate():
+        async for chunk in chain.astream(inp):
+            yield chunk
+
+    return StreamingResponse(generate(), media_type='text/event-stream')
 
 @app.post("/upload_pdf")
 async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
@@ -314,6 +318,7 @@ async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
 # main function to run the server
 if __name__ == "__main__":
     import uvicorn
+
     
     try:
         tunnel = ngrok.connect(**tunnel_config)

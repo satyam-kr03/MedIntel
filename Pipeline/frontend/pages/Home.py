@@ -10,12 +10,12 @@ BASE_URL = "https://cool-starfish-suitable.ngrok-free.app"
 
 async def response_generator(prompt):
     async with aiohttp.ClientSession() as session:
-        # Updated to use query parameter instead of JSON body
-        async with session.post(f'{BASE_URL}/generate?inp={prompt}') as response:
+        async with session.post(f"{BASE_URL}/generate?inp={prompt}") as response:
             if response.status == 200:
-                text = await response.json()
-                return text['message']
-            return "Error generating response"
+                async for chunk in response.content.iter_any():
+                    yield chunk.decode("utf-8")  # Decode chunk to text
+            else:
+                yield "Error generating response"
 
 async def upload_file(file, endpoint):
     form = aiohttp.FormData()
@@ -134,27 +134,38 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">',
-                    unsafe_allow_html=True)  # Load image from Imgur with Bitly link
-
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Display previous messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# Handle new input
 if prompt := st.chat_input("What is up?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
         with st.spinner("Generating response..."):
-            generated = asyncio.run(response_generator(prompt))
-            st.write(generated)
-    st.session_state.messages.append({"role": "assistant", "content": generated})
+            response_placeholder = st.empty()
+            response_container = []  # Use a list to store streamed content (mutable)
+
+            async def stream_response():
+                async for chunk in response_generator(prompt):
+                    response_container.append(chunk)  # Append each chunk
+                    response_placeholder.markdown("".join(response_container))  # Update UI
+
+            asyncio.run(stream_response())
+
+            full_response = "".join(response_container)  # Convert list to full string
+
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+
 
 uploaded_file = st.file_uploader(
     "Upload a pdf or image file",
