@@ -1,33 +1,57 @@
-# %%
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-from typing import Dict,Any
-
-from langchain_community.chat_models import ChatOllama
-from fastapi.middleware.cors import CORSMiddleware
-from langchain_core.output_parsers import StrOutputParser
-from langchain_community.vectorstores import Chroma
-from langchain_community.llms import Ollama
-from langchain.storage import InMemoryStore
-from langchain.schema.document import Document
-from langchain.retrievers.multi_vector import MultiVectorRetriever
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.prompts import ChatPromptTemplate
-
-from pydantic import BaseModel
-from unstructured.partition.auto import partition
 import os
 import uuid
 import subprocess
-import torch
 import base64
 import time
 import glob
+import shutil
+import pytesseract
+from pyngrok import ngrok
+from typing import Dict, Any
+
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+from pydantic import BaseModel
+
+from langchain_community.chat_models import ChatOllama
+from langchain_community.vectorstores import Chroma
+from langchain_community.llms import Ollama
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.prompts import ChatPromptTemplate
+
+from langchain.storage import InMemoryStore
+from langchain.schema.document import Document
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+
+from unstructured.partition.auto import partition
+
+# Set environment variables
+os.environ["PATH"] += r";C:\Users\go39res\AppData\Local\miniconda3\envs\stuff\Library\bin"
+
+# Configure Tesseract
+TESSERACT_PATH = r"C:\Users\go39res\AppData\Local\Programs\Tesseract-OCR"
+os.environ["PATH"] += os.pathsep + TESSERACT_PATH
+pytesseract.pytesseract.tesseract_cmd = os.path.join(TESSERACT_PATH, "tesseract.exe")
+
+print(pytesseract.get_tesseract_version())
+print(shutil.which("tesseract"))
+
+# Configure ngrok
+ngrok.set_auth_token("2rr1W3HKR8YWgtA1UBoBuGI7vBM_4yPLBV8EibUReXoc6oV1d")
+
+tunnel_config = {
+    "addr": "8000",
+    "hostname": "cool-starfish-suitable.ngrok-free.app",
+    "proto": "http"
+}
 
 
-# %%
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Initialize FastAPI app
 app = FastAPI()
 
 origins = [
@@ -44,12 +68,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# %%
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-
+# Initialize the vectorstore
 vectorstore = Chroma(
     collection_name="rag-chroma",
     embedding_function=HuggingFaceEmbeddings(),
@@ -65,28 +84,27 @@ retriever = MultiVectorRetriever(
     id_key=id_key,
 )
 
-# %%
+# Initialize the models
 llm = Ollama(model="llama3.2", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "If I tell you that I am not well or have any medical problem, analyse my conditions carefully, and remember any information about my symptoms or medical history. Keep asking follow-up questions about the symptoms and any other information that may help you to narrow down at a differential diagnosis. Do not ask more than 2 questions at a time. If and only if you are confident about it, provide me with a list of possible diagnoses, three or four at maximum, ranked by likelihood, and a brief explanation of your reasoning. Keep asking questions otherwise, not more than 2 at a time.", keep_alive = -1)
-
 llava = Ollama(model="llava:7b-v1.6-mistral-q2_K", keep_alive = -1)
+
+# Test the models
+print("Models loaded successfully")
+print("Testing Llava: ")
 print(llava("Hi"))
+print("Testing Llama: ")
 print(llm("Hi"))
 
-# %%
-
+# Utility functions
 def image_to_base64(image_path):
         with open(image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read())
             return encoded_string.decode("utf-8")
 
-
-# %%
-
 @app.get("/")
 async def root():
     return RedirectResponse(url="/docs")
 
-# %%
 @app.post("/upload_img")
 async def up_img(inp)-> Dict[str,str]:
     try:
@@ -116,7 +134,6 @@ async def up_img(inp)-> Dict[str,str]:
         print(e)
         return {"message":"404"}
 
-# %%
 @app.post("/generate")
 async def generate_output(inp: str) -> Dict[str, str]:
     s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
@@ -135,10 +152,8 @@ async def generate_output(inp: str) -> Dict[str, str]:
     )
 
     txt = chain.invoke(inp)
-
     return {"message":txt}
 
-# %%
 @app.post("/upload")
 async def post_pdf() -> Dict[str,str]:
     try:
@@ -254,4 +269,18 @@ async def post_pdf() -> Dict[str,str]:
         print(e)
         return {"message":"404"}
 
-
+# main function to run the server
+if __name__ == "__main__":
+    import uvicorn
+    
+    try:
+        tunnel = ngrok.connect(**tunnel_config)
+        print(f"Ngrok tunnel established at: {tunnel.public_url}")
+    except Exception as e:
+        print(f"Error establishing ngrok tunnel: {e}")
+        exit(1)
+    
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    finally:
+        ngrok.disconnect(tunnel.public_url)

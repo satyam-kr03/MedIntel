@@ -1,43 +1,33 @@
 import streamlit as st
 import streamlit.components.v1 as com
-import subprocess
 import aiohttp
 import asyncio
 import os
 
-# st.set_option('deprecation.showfileUploaderEncoding', False)
 st.set_page_config(page_title="OPDx", page_icon="🩺", layout="wide")
 
-# Get the parent directory
-parent_directory = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-new_parent_directory = os.path.join(os.path.dirname(parent_directory), "app")
+BASE_URL = "https://cool-starfish-suitable.ngrok-free.app"
 
-# Streamed response emulator
 async def response_generator(prompt):
     async with aiohttp.ClientSession() as session:
-        async with session.post(f'http://127.0.0.1:8000/generate?inp={prompt}') as response:
-            text = await response.json()
-            print(text)
-            return text['message']
-        
-async def uploadImage(file):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(f'http://127.0.0.1:8000/upload_img?inp={file}') as response:
-            text = await response.json()
-            if(text['message'] == "200"):
-                return "Image uploaded successfully"
-            else: 
-                return "Error in uploading image"
-            
-async def uploadPdf():
-    async with aiohttp.ClientSession() as session:
-        async with session.post('http://127.0.0.1:8000/upload') as response:
-            text = await response.json()
-            if(text['message'] == "200"):
-                return "PDF uploaded successfully"
-            else: 
-                return "Error in uploading file"
+        # Updated to use query parameter instead of JSON body
+        async with session.post(f'{BASE_URL}/generate?inp={prompt}') as response:
+            if response.status == 200:
+                text = await response.json()
+                return text['message']
+            return "Error generating response"
 
+async def upload_file(file, endpoint):
+    form = aiohttp.FormData()
+    form.add_field('file', file.getvalue(), 
+                  filename=file.name,
+                  content_type=file.type)
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f'{BASE_URL}/{endpoint}', data=form) as response:
+            if response.status == 200:
+                return "File uploaded successfully"
+            return "Error uploading file"
 def colored_markdown(text: str, color: str):
     return f'<p class="title" style="background-color: #fff; color: {color}; padding: 5px; line-height: 1">{text}</p>'
 
@@ -147,6 +137,7 @@ st.markdown(
 st.sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">',
                     unsafe_allow_html=True)  # Load image from Imgur with Bitly link
 
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -160,41 +151,28 @@ if prompt := st.chat_input("What is up?"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        generated = asyncio.run(response_generator(prompt))
-        response = st.write(generated)
+        with st.spinner("Generating response..."):
+            generated = asyncio.run(response_generator(prompt))
+            st.write(generated)
     st.session_state.messages.append({"role": "assistant", "content": generated})
 
-# File uploader
 uploaded_file = st.file_uploader(
     "Upload a pdf or image file",
     type=["pdf", "jpg", "png", "jpeg"],
     help="Upload a file to ask related questions."
 )
 
-# Check if a file is uploaded
 if uploaded_file is not None:
-    print("File uploaded")  # Debugging statement
-    
-    # Check the type of the uploaded file
-    if uploaded_file.type == "application/pdf":
-        file_extension = "pdf"
-    else:
-        file_extension = uploaded_file.name.split(".")[-1]
-    
-    # Save the file in the parent directory
-    with open(os.path.join(new_parent_directory, f"uploaded_file.{file_extension}"), "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    # Display a success message 
-    if uploaded_file.type == "application/pdf":
-        pdf_response = asyncio.run(uploadPdf())
-        subprocess.Popen("rm ./../uploaded_file*",shell=True)
-    else:
-        img_response = asyncio.run(uploadImage(f"uploaded_file.{file_extension}"))
+    with st.spinner("Uploading file..."):
+        if uploaded_file.type == "application/pdf":
+            response = asyncio.run(upload_file(uploaded_file, "upload_pdf"))
+        else:
+            response = asyncio.run(upload_file(uploaded_file, "upload_img"))
         
-    st.write(f"File uploaded successfully: {uploaded_file.name}")
-    print("Success from backend")
+        st.write(response)
 
-st.sidebar.write("##")
-st.sidebar.markdown("<h2 style='text-align: center;'>User Dashboard</h2>", unsafe_allow_html=True)
-st.sidebar.write("##")
+sidebar = st.sidebar
+sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">', unsafe_allow_html=True)
+sidebar.write("##")
+sidebar.markdown("<h2 style='text-align: center;'>User Dashboard</h2>", unsafe_allow_html=True)
+sidebar.write("##")
