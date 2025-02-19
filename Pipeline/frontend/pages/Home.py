@@ -140,26 +140,34 @@ if "messages" not in st.session_state:
 if "file_uploaded" not in st.session_state:
     st.session_state.file_uploaded = False
 
+if "current_file" not in st.session_state:
+    st.session_state.current_file = None
+
+if "upload_status" not in st.session_state:
+    st.session_state.upload_status = None
+
 uploaded_file = st.file_uploader(
     "Upload a pdf or image file",
     type=["pdf", "jpg", "png", "jpeg"],
     help="Upload a file to ask related questions."
 )
 
-if uploaded_file is not None and not st.session_state.file_uploaded:
+if uploaded_file is not None and (
+    st.session_state.current_file is None or 
+    uploaded_file.name != st.session_state.current_file
+):
     with st.spinner("Uploading file..."):
-        if uploaded_file.type == "application/pdf":
-            response = asyncio.run(upload_file(uploaded_file, "upload_pdf"))
-        else:
-            response = asyncio.run(upload_file(uploaded_file, "upload_img"))
-
-        st.session_state.upload_status = response  # Store upload status
-        st.session_state.file_uploaded = response == "File uploaded successfully"  # Mark as uploaded
+        endpoint = "upload_pdf" if uploaded_file.type == "application/pdf" else "upload_img"
+        response = asyncio.run(upload_file(uploaded_file, endpoint))
+        
+        st.session_state.upload_status = response
+        st.session_state.file_uploaded = response == "File uploaded successfully"
+        st.session_state.current_file = uploaded_file.name
         st.write(response)
 
-# Prevent input until file upload is successful
+# Chat interface
 if st.session_state.file_uploaded or uploaded_file is None:
-    prompt = st.chat_input("What is up?", key="main_chat_input")  # Assign a unique key
+    prompt = st.chat_input("What is up?", key="main_chat_input")
 
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -170,21 +178,19 @@ if st.session_state.file_uploaded or uploaded_file is None:
         with st.chat_message("assistant"):
             with st.spinner("Generating response..."):
                 response_placeholder = st.empty()
-                response_container = []  # Use a list to store streamed content (mutable)
+                response_container = []
 
                 async def stream_response():
                     async for chunk in response_generator(prompt):
-                        response_container.append(chunk)  # Append each chunk
-                        response_placeholder.markdown("".join(response_container))  # Update UI
+                        response_container.append(chunk)
+                        response_placeholder.markdown("".join(response_container))
 
                 asyncio.run(stream_response())
-
-                full_response = "".join(response_container)  # Convert list to full string
+                full_response = "".join(response_container)
 
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 else:
     st.warning("Please wait until the file upload is complete before asking questions.")
-
 
 sidebar = st.sidebar
 sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">', unsafe_allow_html=True)
