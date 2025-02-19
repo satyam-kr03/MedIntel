@@ -287,8 +287,6 @@ async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
 # main function to run the server
 if __name__ == "__main__":
     import uvicorn
-
-    
     try:
         tunnel = ngrok.connect(**tunnel_config)
         print(f"Ngrok tunnel established at: {tunnel.public_url}")

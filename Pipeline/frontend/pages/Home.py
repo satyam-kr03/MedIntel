@@ -4,7 +4,7 @@ import aiohttp
 import asyncio
 import os
 
-st.set_page_config(page_title="OPDx", page_icon="🩺", layout="wide")
+st.set_page_config(page_title="MedIntel", page_icon="🩺", layout="wide")
 
 BASE_URL = "https://cool-starfish-suitable.ngrok-free.app"
 
