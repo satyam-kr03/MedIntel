@@ -9,3 +9,7 @@ figures/
 .devcontainer/
 .vscode/
 uploads/
+*.key
+*.env
+*.key.pub
+*client_secret.json

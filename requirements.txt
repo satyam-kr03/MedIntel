@@ -71,3 +71,5 @@ wcwidth==0.2.13
 webencodings==0.5.1
 websocket-client==1.8.0
 websockets==12.0
+google-api-python-client
+PyJWT==1.6.1
