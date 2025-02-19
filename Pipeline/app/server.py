@@ -1,33 +1,59 @@
-# %%
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-from typing import Dict,Any
-
-from langchain_community.chat_models import ChatOllama
-from fastapi.middleware.cors import CORSMiddleware
-from langchain_core.output_parsers import StrOutputParser
-from langchain_community.vectorstores import Chroma
-from langchain_community.llms import Ollama
-from langchain.storage import InMemoryStore
-from langchain.schema.document import Document
-from langchain.retrievers.multi_vector import MultiVectorRetriever
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.prompts import ChatPromptTemplate
-
-from pydantic import BaseModel
-from unstructured.partition.auto import partition
 import os
 import uuid
 import subprocess
-import torch
 import base64
 import time
 import glob
+import shutil
+import pytesseract
+from pyngrok import ngrok
+from typing import Dict, Any
 
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-# %%
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from langchain_community.chat_models import ChatOllama
+from langchain_community.vectorstores import Chroma
+from langchain_community.llms import Ollama
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.prompts import ChatPromptTemplate
+
+from langchain.storage import InMemoryStore
+from langchain.schema.document import Document
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+
+from unstructured.partition.auto import partition
+
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from pathlib import Path
+from datetime import datetime
+
+# Set environment variables
+os.environ["PATH"] += r";C:\Users\go39res\AppData\Local\miniconda3\envs\stuff\Library\bin"
+
+# Configure Tesseract
+TESSERACT_PATH = r"C:\Users\go39res\AppData\Local\Programs\Tesseract-OCR"
+os.environ["PATH"] += os.pathsep + TESSERACT_PATH
+pytesseract.pytesseract.tesseract_cmd = os.path.join(TESSERACT_PATH, "tesseract.exe")
+
+print(pytesseract.get_tesseract_version())
+print(shutil.which("tesseract"))
+
+# Configure ngrok
+ngrok.set_auth_token("2rr1W3HKR8YWgtA1UBoBuGI7vBM_4yPLBV8EibUReXoc6oV1d")
+
+tunnel_config = {
+    "addr": "8000",
+    "hostname": "cool-starfish-suitable.ngrok-free.app",
+    "proto": "http"
+}
+
+# Initialize FastAPI app
 app = FastAPI()
 
 origins = [
@@ -44,12 +70,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# %%
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-
+# Initialize the vectorstore
 vectorstore = Chroma(
     collection_name="rag-chroma",
     embedding_function=HuggingFaceEmbeddings(),
@@ -65,64 +86,66 @@ retriever = MultiVectorRetriever(
     id_key=id_key,
 )
 
-# %%
-llm = Ollama(model="llama3.2", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "If I tell you that I am not well or have any medical problem, analyse my conditions carefully, and remember any information about my symptoms or medical history. Keep asking follow-up questions about the symptoms and any other information that may help you to narrow down at a differential diagnosis. Do not ask more than 2 questions at a time. If and only if you are confident about it, provide me with a list of possible diagnoses, three or four at maximum, ranked by likelihood, and a brief explanation of your reasoning. Keep asking questions otherwise, not more than 2 at a time.", keep_alive = -1)
-
+# Initialize the models
+llm = Ollama(model="llama3.2", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "You are a general AI assistant.", keep_alive = -1)
 llava = Ollama(model="llava:7b-v1.6-mistral-q2_K", keep_alive = -1)
+
+# Test the models
+print("Models loaded successfully")
+print("Testing Llava: ")
 print(llava("Hi"))
+print("Testing Llama: ")
 print(llm("Hi"))
 
-# %%
-
+# Utility functions
 def image_to_base64(image_path):
         with open(image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read())
             return encoded_string.decode("utf-8")
 
-
-# %%
-
 @app.get("/")
 async def root():
     return RedirectResponse(url="/docs")
 
-# %%
 @app.post("/upload_img")
-async def up_img(inp)-> Dict[str,str]:
+async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
     try:
         cleaned_img_summary = []
-        filename = inp
         
-    # Iterate over matched file paths
-        for img in [filename]:
-            RES = llava(prompt="Provide a concise, factual summary of the image, capturing all the key visual elements and details you observe. Avoid speculative or imaginative descriptions not directly supported by the contents of the image. Focus on objectively describing what is present in the image without introducing any external information or ideas. Your summary should be grounded solely in the visual information provided." ,images=[str(image_to_base64(f"./{img}"))])
-            cleaned_img_summary.append(RES)
-        # print(cleaned_img_summary)
+        # Read the uploaded image file
+        image_bytes = await file.read()
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        
+        # Process image with LLaVA
+        RES = llava(prompt="Provide a concise, factual summary of the image, capturing all the key visual elements and details you observe. Avoid speculative or imaginative descriptions not directly supported by the contents of the image. Focus on objectively describing what is present in the image without introducing any external information or ideas. Your summary should be grounded solely in the visual information provided.", images=[image_base64])
+        cleaned_img_summary.append(RES)
         
         img_ids = [str(uuid.uuid4()) for _ in cleaned_img_summary]
         summary_img = [
             Document(page_content=s, metadata={id_key: img_ids[i]})
             for i, s in enumerate(cleaned_img_summary)
         ]
-
+        
         retriever.vectorstore.add_documents(summary_img)
         retriever.docstore.mset(
             list(zip(img_ids, cleaned_img_summary))
         )
         
-        return {"message":"200"}
+        return {"message": "200"}
     
-    except Exception as e: 
+    except Exception as e:
         print(e)
-        return {"message":"404"}
+        return {"message": "404"}
 
-# %%
+
 @app.post("/generate")
-async def generate_output(inp: str) -> Dict[str, str]:
-    s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
+async def generate_output(inp: str):
+    
+    #s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
+    s = "You are an AI assistant"
 
-# Prompt template
-    template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. {{ if .}}### Instruction: If I tell you that I am not well or have any medical problem, analyse my conditions carefully, and remember any information about my symptoms or medical history. Keep asking follow-up questions about the symptoms and any other information that may help you to narrow down at a differential diagnosis. Do not ask more than 2 questions at a time. If and only if you are confident about it, provide me with a list of possible diagnoses, three or four at maximum, ranked by likelihood, and a brief explanation of your reasoning. Keep asking questions otherwise, not more than 2 at a time. You also have the following context, which can include text and tables to answer my QUESTION {{ .System }}{{ end }} {{ if .Prompt }}{context}
+    # Prompt template
+    template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. {{ if .}}### Instruction: Answer the questions based on whatever information you have.{{ .System }}{{ end }} {{ if .Prompt }}{context}
                     Question: {question}{{ .Prompt }}{{ end }} ### Response:"""
     prompt = ChatPromptTemplate.from_template(template)
 
@@ -134,19 +157,25 @@ async def generate_output(inp: str) -> Dict[str, str]:
         | StrOutputParser()
     )
 
-    txt = chain.invoke(inp)
+    async def generate():
+        async for chunk in chain.astream(inp):
+            yield chunk
 
-    return {"message":txt}
+    return StreamingResponse(generate(), media_type='text/event-stream')
 
-# %%
-@app.post("/upload")
-async def post_pdf() -> Dict[str,str]:
+@app.post("/upload_pdf")
+async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
     try:
         print("here1")
+        # Save the uploaded file
         filename = "uploaded_file.pdf"
         path = "./"
+        
+        content = await file.read()
+        with open(path + filename, "wb") as f:
+            f.write(content)
 
-        # Extract images, tables, and chunk text
+        # Rest of your original code remains exactly the same
         raw_pdf_elements = partition(
             filename = path + filename,
             extract_images_in_pdf=True,
@@ -255,3 +284,19 @@ async def post_pdf() -> Dict[str,str]:
         return {"message":"404"}
 
 
+# main function to run the server
+if __name__ == "__main__":
+    import uvicorn
+
+    
+    try:
+        tunnel = ngrok.connect(**tunnel_config)
+        print(f"Ngrok tunnel established at: {tunnel.public_url}")
+    except Exception as e:
+        print(f"Error establishing ngrok tunnel: {e}")
+        exit(1)
+    
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    finally:
+        ngrok.disconnect(tunnel.public_url)
