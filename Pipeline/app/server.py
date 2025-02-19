@@ -33,6 +33,9 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from pathlib import Path
 from datetime import datetime
 
+#import nltk
+#nltk.download('averaged_perceptron_tagger')
+
 # Set environment variables
 os.environ["PATH"] += r";C:\Users\go39res\AppData\Local\miniconda3\envs\stuff\Library\bin"
 
@@ -87,7 +90,7 @@ retriever = MultiVectorRetriever(
 )
 
 # Initialize the models
-llm = Ollama(model="llama3.2", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "You are a general AI assistant.", keep_alive = -1)
+llm = Ollama(model="llama3.1:8b", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "You are a general AI assistant.", keep_alive = -1)
 llava = Ollama(model="llava:7b-v1.6-mistral-q2_K", keep_alive = -1)
 
 # Test the models
