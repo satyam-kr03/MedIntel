@@ -32,6 +32,7 @@ from unstructured.partition.auto import partition
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pathlib import Path
 from datetime import datetime
+import threading
 
 #import nltk
 #nltk.download('averaged_perceptron_tagger')
@@ -73,24 +74,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize the vectorstore
-vectorstore = Chroma(
-    collection_name="rag-chroma",
-    embedding_function=HuggingFaceEmbeddings(),
-)
+lock = threading.Lock()
 
-store = InMemoryStore()
 id_key = "doc_id"
 
-# The retriever (empty to start)
-retriever = MultiVectorRetriever(
-    vectorstore=vectorstore,
-    docstore=store,
-    id_key=id_key,
-)
+def reset_database():
+    global vectorstore, retriever, store
+    with lock:
+        print("Resetting database...")
+        
+        # Clear and reinitialize vectorstore
+        vectorstore = Chroma(
+            collection_name="rag-chroma",
+            embedding_function=HuggingFaceEmbeddings(),
+        )
+
+        # Reinitialize retriever
+        store = InMemoryStore()
+        retriever = MultiVectorRetriever(
+            vectorstore=vectorstore,
+            docstore=store,
+            id_key="doc_id",
+        )
+
+        print("Database reset successfully.")
+
+def schedule_reset(interval=120):
+    threading.Timer(interval, schedule_reset, [interval]).start()
+    reset_database()
+
+# Start periodic resets
+schedule_reset()
 
 # Initialize the models
-llm = Ollama(model="llama3.1:8b", stop = ["###", "{", "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request."], system = "You are a general AI assistant.", keep_alive = -1)
+llm = Ollama(
+    model="llama3.2",
+    stop=["###", "{", "Below is an instruction describing a task, paired with an input providing further context. Write a response that appropriately completes the request."],
+    system="You are a knowledgeable AI assistant. For medical-related inquiries, provide responses aligned with clinical evidence, best practices, and ethical guidelines. For general queries, respond as a helpful AI assistant, ensuring clarity, accuracy, and relevance.",
+    keep_alive=-1
+)
+
 llava = Ollama(model="llava:7b-v1.6-mistral-q2_K", keep_alive = -1)
 
 # Test the models
@@ -148,8 +171,14 @@ async def generate_output(inp: str):
     s = "You are an AI assistant"
 
     # Prompt template
-    template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. {{ if .}}### Instruction: Answer the questions based on whatever information you have.{{ .System }}{{ end }} {{ if .Prompt }}{context}
-                    Question: {question}{{ .Prompt }}{{ end }} ### Response:"""
+    template = """Below is an instruction describing a task, paired with an input providing further context. Write a response that appropriately completes the request.
+
+    {{ if .}}### Instruction: Respond based on the given context. If the inquiry is medical, provide an accurate and professional response as a healthcare professional. Otherwise, respond as a general AI assistant.{{ .System }}{{ end }} 
+    {{ if .Prompt }}{context}
+    Question: {question}{{ .Prompt }}{{ end }} 
+
+    ### Response:"""
+
     prompt = ChatPromptTemplate.from_template(template)
 
     # RAG pipeline
@@ -285,7 +314,6 @@ async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
     except Exception as e:
         print(e)
         return {"message":"404"}
-
 
 # main function to run the server
 if __name__ == "__main__":
