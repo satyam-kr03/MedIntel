@@ -153,9 +153,9 @@ uploaded_file = st.file_uploader(
 )
 
 # Display previous chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# for message in st.session_state.messages:
+#    with st.chat_message(message["role"]):
+#        st.markdown(message["content"])
 
 if uploaded_file is not None and (
     st.session_state.current_file is None or 
