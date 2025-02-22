@@ -3,31 +3,36 @@ import streamlit.components.v1 as com
 import aiohttp
 import asyncio
 import os
+import uuid
 
 st.set_page_config(page_title="MedIntel", page_icon="🩺", layout="wide")
 
 BASE_URL = "https://cool-starfish-suitable.ngrok-free.app"
 
-async def response_generator(prompt):
+if "client_id" not in st.session_state:
+    st.session_state.client_id = str(uuid.uuid4())
+
+async def response_generator(prompt, client_id):
     async with aiohttp.ClientSession() as session:
-        async with session.post(f"{BASE_URL}/generate?inp={prompt}") as response:
+        async with session.post(f"{BASE_URL}/generate/{client_id}?inp={prompt}") as response:
             if response.status == 200:
                 async for chunk in response.content.iter_any():
-                    yield chunk.decode("utf-8")  # Decode chunk to text
+                    yield chunk.decode("utf-8")
             else:
                 yield "Error generating response"
 
-async def upload_file(file, endpoint):
+async def upload_file(file, endpoint, client_id):
     form = aiohttp.FormData()
     form.add_field('file', file.getvalue(), 
                   filename=file.name,
                   content_type=file.type)
     
     async with aiohttp.ClientSession() as session:
-        async with session.post(f'{BASE_URL}/{endpoint}', data=form) as response:
+        async with session.post(f'{BASE_URL}/{endpoint}/{client_id}', data=form) as response:
             if response.status == 200:
                 return "File uploaded successfully"
             return "Error uploading file"
+
 def colored_markdown(text: str, color: str):
     return f'<p class="title" style="background-color: #fff; color: {color}; padding: 5px; line-height: 1">{text}</p>'
 
@@ -134,6 +139,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Initialize session state variables
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -146,16 +152,19 @@ if "current_file" not in st.session_state:
 if "upload_status" not in st.session_state:
     st.session_state.upload_status = None
 
+# Display client ID in sidebar (optional, for debugging)
+sidebar = st.sidebar
+sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">', unsafe_allow_html=True)
+sidebar.write("##")
+sidebar.markdown("<h2 style='text-align: center;'>User Dashboard</h2>", unsafe_allow_html=True)
+sidebar.write("##")
+sidebar.markdown(f"Session ID: {st.session_state.client_id}")
+
 uploaded_file = st.file_uploader(
     "Upload a pdf or image file",
     type=["pdf", "jpg", "png", "jpeg"],
     help="Upload a file to ask related questions."
 )
-
-# Display previous chat messages
-# for message in st.session_state.messages:
-#    with st.chat_message(message["role"]):
-#        st.markdown(message["content"])
 
 if uploaded_file is not None and (
     st.session_state.current_file is None or 
@@ -163,7 +172,13 @@ if uploaded_file is not None and (
 ):
     with st.spinner("Uploading file..."):
         endpoint = "upload_pdf" if uploaded_file.type == "application/pdf" else "upload_img"
-        response = asyncio.run(upload_file(uploaded_file, endpoint))
+        response = asyncio.run(
+            upload_file(
+                uploaded_file, 
+                endpoint, 
+                st.session_state.client_id
+            )
+        )
         
         st.session_state.upload_status = response
         st.session_state.file_uploaded = response == "File uploaded successfully"
@@ -186,7 +201,10 @@ if st.session_state.file_uploaded or uploaded_file is None:
                 response_container = []
 
                 async def stream_response():
-                    async for chunk in response_generator(prompt):
+                    async for chunk in response_generator(
+                        prompt, 
+                        st.session_state.client_id
+                    ):
                         response_container.append(chunk)
                         response_placeholder.markdown("".join(response_container))
 
@@ -196,9 +214,3 @@ if st.session_state.file_uploaded or uploaded_file is None:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 else:
     st.warning("Please wait until the file upload is complete before asking questions.")
-
-sidebar = st.sidebar
-sidebar.markdown(f'<img src="https://i.imgur.com/ngr2HSn.png" width="200">', unsafe_allow_html=True)
-sidebar.write("##")
-sidebar.markdown("<h2 style='text-align: center;'>User Dashboard</h2>", unsafe_allow_html=True)
-sidebar.write("##")

@@ -34,6 +34,52 @@ from pathlib import Path
 from datetime import datetime
 import threading
 
+import os
+from typing import Dict, Any
+from dataclasses import dataclass
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.storage import InMemoryStore
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+
+@dataclass
+class ClientStorage:
+    vectorstore: Chroma
+    docstore: InMemoryStore
+    retriever: MultiVectorRetriever
+
+class ClientStorageManager:
+    def __init__(self):
+        self.client_storage: Dict[str, ClientStorage] = {}
+        self.embeddings = HuggingFaceEmbeddings()
+    
+    def create_client_storage(self, client_id: str) -> ClientStorage:
+        """Create new storage instances for a client"""
+        vectorstore = Chroma(
+            collection_name=f"rag-chroma-{client_id}",
+            embedding_function=self.embeddings,
+        )
+        docstore = InMemoryStore()
+        retriever = MultiVectorRetriever(
+            vectorstore=vectorstore,
+            docstore=docstore,
+            id_key="doc_id",
+        )
+        
+        storage = ClientStorage(vectorstore, docstore, retriever)
+        self.client_storage[client_id] = storage
+        return storage
+    
+    def get_client_storage(self, client_id: str) -> ClientStorage:
+        """Get or create storage for a client"""
+        if client_id not in self.client_storage:
+            return self.create_client_storage(client_id)
+        return self.client_storage[client_id]
+
+# Initialize storage manager
+storage_manager = ClientStorageManager()
+
 #import nltk
 #nltk.download('averaged_perceptron_tagger')
 
@@ -74,37 +120,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-lock = threading.Lock()
-
 id_key = "doc_id"
-
-def reset_database():
-    global vectorstore, retriever, store
-    with lock:
-        print("Resetting database...")
-        
-        # Clear and reinitialize vectorstore
-        vectorstore = Chroma(
-            collection_name="rag-chroma",
-            embedding_function=HuggingFaceEmbeddings(),
-        )
-
-        # Reinitialize retriever
-        store = InMemoryStore()
-        retriever = MultiVectorRetriever(
-            vectorstore=vectorstore,
-            docstore=store,
-            id_key="doc_id",
-        )
-
-        print("Database reset successfully.")
-
-def schedule_reset(interval=120):
-    threading.Timer(interval, schedule_reset, [interval]).start()
-    reset_database()
-
-# Start periodic resets
-schedule_reset()
 
 # Initialize the models
 llm = Ollama(
@@ -133,9 +149,10 @@ def image_to_base64(image_path):
 async def root():
     return RedirectResponse(url="/docs")
 
-@app.post("/upload_img")
-async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
+@app.post("/upload_img/{client_id}")
+async def up_img(client_id: str, file: UploadFile = File(...)) -> Dict[str, str]:
     try:
+        storage = storage_manager.get_client_storage(client_id)
         cleaned_img_summary = []
         
         # Read the uploaded image file
@@ -152,8 +169,8 @@ async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
             for i, s in enumerate(cleaned_img_summary)
         ]
         
-        retriever.vectorstore.add_documents(summary_img)
-        retriever.docstore.mset(
+        storage.vectorstore.add_documents(summary_img)
+        storage.docstore.mset(
             list(zip(img_ids, cleaned_img_summary))
         )
         
@@ -164,8 +181,9 @@ async def up_img(file: UploadFile = File(...)) -> Dict[str, str]:
         return {"message": "404"}
 
 
-@app.post("/generate")
-async def generate_output(inp: str):
+@app.post("/generate/{client_id}")
+async def generate_output(client_id: str, inp: str):
+    storage = storage_manager.get_client_storage(client_id)
     
     #s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
     s = "You are an AI assistant"
@@ -183,7 +201,7 @@ async def generate_output(inp: str):
 
     # RAG pipeline
     chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
+        {"context": storage.retriever, "question": RunnablePassthrough()}
         | prompt
         | llm
         | StrOutputParser()
@@ -195,9 +213,10 @@ async def generate_output(inp: str):
 
     return StreamingResponse(generate(), media_type='text/event-stream')
 
-@app.post("/upload_pdf")
-async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
+@app.post("/upload_pdf/{client_id}")
+async def post_pdf(client_id: str, file: UploadFile = File(...)) -> Dict[str, str]:
     try:
+        storage = storage_manager.get_client_storage(client_id)
         print("here1")
         # Save the uploaded file
         filename = "uploaded_file.pdf"
@@ -306,10 +325,8 @@ async def post_pdf(file: UploadFile = File(...)) -> Dict[str,str]:
         ]
         print(cleaned_img_summary)
         
-        retriever.vectorstore.add_documents(summary_img)
-        retriever.docstore.mset(
-            list(zip(img_ids, cleaned_img_summary))
-        )
+        storage.vectorstore.add_documents(summary_texts)
+        storage.docstore.mset(list(zip(doc_ids, texts)))
         return {"message":"200"}
     except Exception as e:
         print(e)
