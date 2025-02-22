@@ -154,7 +154,7 @@ if "upload_status" not in st.session_state:
 
 # Display client ID in sidebar (optional, for debugging)
 sidebar = st.sidebar
-sidebar.markdown(f'<div style="text-align: center;"><img src="https://i.imgur.com/sIODdi4.png" width="200"></div>', unsafe_allow_html=True)
+sidebar.markdown(f'<div style="text-align: center;"><img src="https://i.imgur.com/qmreGhk.png" width="200"></div>', unsafe_allow_html=True)
 sidebar.write("##")
 sidebar.markdown("<h2 style='text-align: center;'>MedIntel</h2>", unsafe_allow_html=True)
 sidebar.write("##")
