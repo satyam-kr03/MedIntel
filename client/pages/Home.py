@@ -160,11 +160,12 @@ sidebar.markdown("<h2 style='text-align: center;'>User Dashboard</h2>", unsafe_a
 sidebar.write("##")
 sidebar.markdown(f"Session ID: {st.session_state.client_id}")
 
-uploaded_file = st.file_uploader(
-    "Upload a pdf or image file",
-    type=["pdf", "jpg", "png", "jpeg"],
-    help="Upload a file to ask related questions."
-)
+with st.sidebar:
+    uploaded_file = st.file_uploader(
+        "Upload a pdf or image file",
+        type=["pdf", "jpg", "png", "jpeg"],
+        help="Upload a file to provide context for your queries."
+    )
 
 if uploaded_file is not None and (
     st.session_state.current_file is None or 
@@ -184,6 +185,10 @@ if uploaded_file is not None and (
         st.session_state.file_uploaded = response == "File uploaded successfully"
         st.session_state.current_file = uploaded_file.name
         st.write(response)
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
 # Chat interface
 if st.session_state.file_uploaded or uploaded_file is None:
