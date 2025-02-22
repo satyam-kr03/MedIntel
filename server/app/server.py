@@ -293,8 +293,8 @@ async def post_pdf(client_id: str, file: UploadFile = File(...)) -> Dict[str, st
             Document(page_content=s, metadata={id_key: doc_ids[i]})
             for i, s in enumerate(text_summaries)
         ]
-        retriever.vectorstore.add_documents(summary_texts)
-        retriever.docstore.mset(list(zip(doc_ids, texts)))
+        storage.vectorstore.add_documents(summary_texts)
+        storage.docstore.mset(list(zip(doc_ids, texts)))
 
         # Add tables
         table_ids = [str(uuid.uuid4()) for _ in tables]
@@ -302,8 +302,8 @@ async def post_pdf(client_id: str, file: UploadFile = File(...)) -> Dict[str, st
             Document(page_content=s, metadata={id_key: table_ids[i]})
             for i, s in enumerate(table_summaries)
         ]
-        retriever.vectorstore.add_documents(summary_tables)
-        retriever.docstore.mset(list(zip(table_ids, tables)))
+        storage.vectorstore.add_documents(summary_tables)
+        storage.docstore.mset(list(zip(table_ids, tables)))
 
         IMG_DIR = './'
 
