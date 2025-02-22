@@ -6,15 +6,14 @@ import time
 import glob
 import shutil
 import pytesseract
+import threading
+
 from pyngrok import ngrok
 from typing import Dict, Any
-
-from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
 from langchain_community.chat_models import ChatOllama
 from langchain_community.vectorstores import Chroma
 from langchain_community.llms import Ollama
@@ -22,7 +21,6 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
-
 from langchain.storage import InMemoryStore
 from langchain.schema.document import Document
 from langchain.retrievers.multi_vector import MultiVectorRetriever
@@ -32,16 +30,9 @@ from unstructured.partition.auto import partition
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pathlib import Path
 from datetime import datetime
-import threading
-
-import os
-from typing import Dict, Any
 from dataclasses import dataclass
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.storage import InMemoryStore
-from langchain.retrievers.multi_vector import MultiVectorRetriever
 
 @dataclass
 class ClientStorage:
@@ -77,8 +68,30 @@ class ClientStorageManager:
             return self.create_client_storage(client_id)
         return self.client_storage[client_id]
 
+class ChatSession:
+    def __init__(self, max_history: int = 10):
+        self.history: List[Dict[str, str]] = []
+        self.max_history = max_history
+    
+    def add_message(self, role: str, content: str):
+        self.history.append({
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        })
+        # Keep only the last max_history messages
+        if len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history:]
+    
+    def get_formatted_history(self) -> str:
+        return "\n".join([
+            f"{msg['role']}: {msg['content']}" 
+            for msg in self.history
+        ])
+
 # Initialize storage manager
 storage_manager = ClientStorageManager()
+chat_sessions: Dict[str, ChatSession] = {}
 
 #import nltk
 #nltk.download('averaged_perceptron_tagger')
@@ -184,6 +197,11 @@ async def up_img(client_id: str, file: UploadFile = File(...)) -> Dict[str, str]
 @app.post("/generate/{client_id}")
 async def generate_output(client_id: str, inp: str):
     storage = storage_manager.get_client_storage(client_id)
+
+    if client_id not in chat_sessions:
+        chat_sessions[client_id] = ChatSession()
+    
+    session = chat_sessions[client_id]
     
     #s = "You Are my personal doctor. You have to Remember my symptoms antecendants past history and try to ask me follow up questions whenever I tell you that I am not well"
     s = "You are an AI assistant"
@@ -191,25 +209,41 @@ async def generate_output(client_id: str, inp: str):
     # Prompt template
     template = """Below is an instruction describing a task, paired with an input providing further context. Write a response that appropriately completes the request.
 
-    {{ if .}}### Instruction: Respond based on the given context. If the inquiry is medical, provide an accurate and professional response as a healthcare professional. Otherwise, respond as a general AI assistant.{{ .System }}{{ end }} 
-    {{ if .Prompt }}{context}
-    Question: {question}{{ .Prompt }}{{ end }} 
+    {{ if .}}### Instruction: Respond based on the given context and chat history. If the inquiry is medical, provide an accurate and professional response as a healthcare professional. Otherwise, respond as a general AI assistant.{{ .System }}{{ end }} 
+
+    Previous conversation:
+    {chat_history}
+
+    Current context: {context}
+    Current question: {question}
 
     ### Response:"""
 
     prompt = ChatPromptTemplate.from_template(template)
 
-    # RAG pipeline
+    # Add user message to history
+    session.add_message("user", inp)
+
+    # Modified RAG pipeline with chat history
     chain = (
-        {"context": storage.retriever, "question": RunnablePassthrough()}
+        {
+            "context": storage.retriever,
+            "question": RunnablePassthrough(),
+            "chat_history": lambda _: session.get_formatted_history()
+        }
         | prompt
         | llm
         | StrOutputParser()
     )
 
     async def generate():
+        response_chunks = []
         async for chunk in chain.astream(inp):
+            response_chunks.append(chunk)
             yield chunk
+        
+        full_response = "".join(response_chunks)
+        session.add_message("assistant", full_response)
 
     return StreamingResponse(generate(), media_type='text/event-stream')
 
@@ -217,7 +251,7 @@ async def generate_output(client_id: str, inp: str):
 async def post_pdf(client_id: str, file: UploadFile = File(...)) -> Dict[str, str]:
     try:
         storage = storage_manager.get_client_storage(client_id)
-        print("here1")
+        print("PDF processing started...")
         # Save the uploaded file
         filename = "uploaded_file.pdf"
         path = "./"
@@ -239,7 +273,7 @@ async def post_pdf(client_id: str, file: UploadFile = File(...)) -> Dict[str, st
         )
         category_counts = {}
         
-        print("Safe1")
+        print("PDF partitioned successfully...")
 
         for element in raw_pdf_elements:
             category = str(type(element))
@@ -264,7 +298,7 @@ async def post_pdf(client_id: str, file: UploadFile = File(...)) -> Dict[str, st
             elif "unstructured.documents.elements.CompositeElement" in str(type(element)):
                 categorized_elements.append(Element(type="text", text=str(element)))
 
-        print("safe2")
+        print("PDF elements categorized successfully...")
         # Tables
         table_elements = [e for e in categorized_elements if e.type == "table"]
         # print(len(table_elements))

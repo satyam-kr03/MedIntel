@@ -170,7 +170,7 @@ if uploaded_file is not None and (
     st.session_state.current_file is None or 
     uploaded_file.name != st.session_state.current_file
 ):
-    with st.spinner("Uploading file..."):
+    with st.spinner("Processing file..."):
         endpoint = "upload_pdf" if uploaded_file.type == "application/pdf" else "upload_img"
         response = asyncio.run(
             upload_file(
