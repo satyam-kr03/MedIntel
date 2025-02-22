@@ -10,6 +10,7 @@ import threading
 
 from pyngrok import ngrok
 from typing import Dict, Any
+from collections import OrderedDict
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -41,12 +42,18 @@ class ClientStorage:
     retriever: MultiVectorRetriever
 
 class ClientStorageManager:
-    def __init__(self):
-        self.client_storage: Dict[str, ClientStorage] = {}
+    def __init__(self, max_clients: int = 50):
+        self.client_storage: OrderedDict[str, ClientStorage] = OrderedDict()
         self.embeddings = HuggingFaceEmbeddings()
+        self.max_clients = max_clients
     
     def create_client_storage(self, client_id: str) -> ClientStorage:
-        """Create new storage instances for a client"""
+        """Create new storage instances for a client, evicting least recently used if necessary."""
+        if len(self.client_storage) >= self.max_clients:
+            # Remove the least recently used client (first item in OrderedDict)
+            lru_client_id, _ = self.client_storage.popitem(last=False)
+            print(f"Evicted LRU client: {lru_client_id}")
+
         vectorstore = Chroma(
             collection_name=f"rag-chroma-{client_id}",
             embedding_function=self.embeddings,
@@ -60,16 +67,20 @@ class ClientStorageManager:
         
         storage = ClientStorage(vectorstore, docstore, retriever)
         self.client_storage[client_id] = storage
+        self.client_storage.move_to_end(client_id, last=True)  # Mark as recently used
         return storage
     
     def get_client_storage(self, client_id: str) -> ClientStorage:
-        """Get or create storage for a client"""
+        """Get or create storage for a client, updating usage order."""
         if client_id not in self.client_storage:
             return self.create_client_storage(client_id)
+        
+        # Move accessed client to the end (most recently used)
+        self.client_storage.move_to_end(client_id, last=True)
         return self.client_storage[client_id]
 
 class ChatSession:
-    def __init__(self, max_history: int = 10):
+    def __init__(self, max_history: int = 30):
         self.history: List[Dict[str, str]] = []
         self.max_history = max_history
     
