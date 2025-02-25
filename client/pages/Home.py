@@ -44,7 +44,7 @@ with col1:
     com.iframe("https://lottie.host/embed/5899ceed-3498-4546-8ebf-b25561f40002/Xnif8r8nZ4.json", height=400, width=950)
 
 try:
-    st.markdown(colored_markdown(f"User", "#007bff"),
+    st.markdown(colored_markdown(f"", "#007bff"),
                 unsafe_allow_html=True)  # Blue color
     st.markdown(colored_markdown("How can I help you today ?", "#39A5A9"),
                 unsafe_allow_html=True)  # Red color

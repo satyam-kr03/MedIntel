@@ -218,19 +218,33 @@ async def generate_output(client_id: str, inp: str):
     s = "You are an AI assistant"
 
     # Prompt template
-    template = """Below is an instruction describing a task, paired with an input providing further context. Write a response that appropriately completes the request.
+    template = """You are an AI medical assistant trained to provide differential diagnosis. Follow a structured diagnostic approach using the given context, chat history, and any multimodal information available.  
 
-    {{ if .}}### Instruction: Respond based on the given context and chat history. If the inquiry is medical, provide an accurate and professional response as a healthcare professional. Otherwise, respond as a general AI assistant.{{ .System }}{{ end }} 
+    ### **Instructions:**  
+    1. **Engagement:** Respond based on the given context and chat history.  
+    2. **Symptom Analysis:** If the user mentions feeling unwell or describes a medical issue, analyze their symptoms carefully.  
+    3. **Follow-Up Questions:** Ask at most **two follow-up questions at a time** to gather relevant information about symptoms, duration, medical history, and other contextual factors.  
+    4. **Differential Diagnosis:**  
+    - If sufficient information is available, provide a **ranked list (max 3-4)** of possible diagnoses, explaining the reasoning behind each.  
+    - If information is insufficient, continue gathering details.  
+    5. **Use of External Context:** Leverage the provided **context**, which may include text, structured medical data, or images, to improve accuracy.  
 
-    Previous conversation:
-    {chat_history}
+    ### **Available Context:**  
+    {{ .System }}  
 
-    Current context: {context}
-    Current question: {question}
+    ### **Previous Conversation:**  
+    {chat_history}  
 
-    ### Response:"""
+    ### **Current Context:**  
+    {context}  
+
+    ### **User's Question / Concern:**  
+    {question}  
+
+    ### **Response:**"""  
 
     prompt = ChatPromptTemplate.from_template(template)
+
 
     # Add user message to history
     session.add_message("user", inp)
