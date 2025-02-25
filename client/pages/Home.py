@@ -46,7 +46,7 @@ with col1:
 try:
     st.markdown(colored_markdown(f"", "#007bff"),
                 unsafe_allow_html=True)  # Blue color
-    st.markdown(colored_markdown("How can I help you today ?", "#39A5A9"),
+    st.markdown(colored_markdown("How can I help you today ?", "#39A5A9").replace('</p>', ' style="font-size: 24px;"></p>'),
                 unsafe_allow_html=True)  # Red color
 except:
 
