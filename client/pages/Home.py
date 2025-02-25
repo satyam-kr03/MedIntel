@@ -46,7 +46,7 @@ with col1:
 try:
     st.markdown(colored_markdown(f"", "#007bff"),
                 unsafe_allow_html=True)  # Blue color
-    st.markdown(colored_markdown("<span style='font-size:64px;'>How can I help you today?</span>", "#39A5A9"),
+    st.markdown(colored_markdown("<span style='font-size:48px;'>How can I help you today?</span>", "#39A5A9"),
                 unsafe_allow_html=True)
   # Red color
 except:
